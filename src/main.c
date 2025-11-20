@@ -1,85 +1,38 @@
 #include "gbavm.h"
 #include "metr.h"
-#include <string.h>
 
-OBJ_ATTR obj_buffer[128];
-OBJ_AFFINE *obj_aff_buffer = (OBJ_AFFINE *)obj_buffer;
+const Inst program[] = {
+    // opcode=1 (draw), args=(x<<16)|(y<<8)|colorIndex
+    (0x31 << 24) | (10 << 16) | (10 << 8) | 0,
+    (0x31 << 24) | (50 << 16) | (50 << 8) | 1,
 
-// testing a few sprite things
-// D-pad: move
-// SELECT: switch palette
-// START: toggle mapping mode
-// A: horizontal flip
-// B: vertical flip
-// L & R shift starting tile
-void obj_test()
+    // Jump back to instruction 0
+    (0x10 << 24) | 0,
+};
+
+const u16 palette[256] = {
+    CLR_RED,
+    CLR_GREEN,
+    CLR_BLUE,
+};
+
+int main()
 {
-    int x = 96, y = 32;
-    u32 tid = 0, pb = 0; // tile id, pal-bank
+    REG_DISPCNT = DCNT_MODE3 | DCNT_BG2;
 
-    OBJ_ATTR *metr = &obj_buffer[0];
-    obj_set_attr(metr,
-                 ATTR0_SQUARE,             // Square, regular sprite
-                 ATTR1_SIZE_64,            // 64x64p,
-                 ATTR2_PALBANK(pb) | tid); // palbank 0, tile 0
+    VM vm = {
+        .prog = program,
+        .ip = 0,
+        .running = 1};
 
-    // position sprite (redundant here; the _real_ position
-    // is set further down
-    obj_set_pos(metr, x, y);
+    irq_init(NULL);
+    irq_enable(II_VBLANK);
 
     while (1)
     {
         VBlankIntrWait();
-        key_poll();
 
-        // move left/right
-        x += 2 * key_tri_horz();
-
-        // move up/down
-        y += 2 * key_tri_vert();
-
-        // increment/decrement starting tile with R/L
-        tid += bit_tribool(key_hit(-1), KI_R, KI_L);
-
-        // flip
-        if (key_hit(KEY_A)) // horizontally
-            metr->attr1 ^= ATTR1_HFLIP;
-        if (key_hit(KEY_B)) // vertically
-            metr->attr1 ^= ATTR1_VFLIP;
-
-        // make it glow (via palette swapping)
-        pb = key_is_down(KEY_SELECT) ? 1 : 0;
-
-        // toggle mapping mode
-        if (key_hit(KEY_START))
-            REG_DISPCNT ^= DCNT_OBJ_1D;
-
-        // Hey look, it's one of them build macros!
-        metr->attr2 = ATTR2_BUILD(tid, pb, 0);
-        obj_set_pos(metr, x, y);
-
-        oam_copy(oam_mem, obj_buffer, 1); // only need to update one
+        for (int i = 0; i < 3 && vm.running; i++)
+            vm_step(&vm, palette);
     }
-}
-
-int main()
-{
-    // Init interrupts and VBlank irq.
-    irq_init(NULL);
-    irq_add(II_VBLANK, NULL);
-
-    // Places the glyphs of a 4bpp boxed metroid sprite
-    //   into LOW obj memory (cbb == 4)
-    memcpy32(&tile_mem[4][0], metrTiles, metrTilesLen / sizeof(u32));
-    memcpy16(pal_obj_mem, metrPal, metrPalLen / sizeof(u16));
-
-    oam_init(obj_buffer, 128);
-    REG_DISPCNT = DCNT_OBJ | DCNT_OBJ_1D;
-
-    obj_test();
-
-    while (1)
-        VBlankIntrWait();
-
-    return 0;
 }
