@@ -16,23 +16,27 @@ const u16 palette[256] = {
     CLR_BLUE,
 };
 
-int main()
-{
-    REG_DISPCNT = DCNT_MODE3 | DCNT_BG2;
+int main() {
+	REG_DISPCNT = DCNT_MODE3 | DCNT_BG2;
 
-    VM vm = {
-        .prog = program,
-        .ip = 0,
-        .running = 1};
+	Script main_script = {.program = program, .ip = 0, .length = sizeof(program) / sizeof(program[0])};
 
-    irq_init(NULL);
-    irq_enable(II_VBLANK);
+	VM vm = {.running = 1};
 
-    while (1)
-    {
-        VBlankIntrWait();
+	Scene main_scene = {0};
+	Object obj;
+	obj.script = &main_script;
+	scene_add_object(&main_scene, &obj, 0);
 
-        for (int i = 0; i < 3 && vm.running; i++)
-            vm_step(&vm, palette);
-    }
+	CURRENT_SCENE = &main_scene;
+
+	irq_init(NULL);
+	irq_enable(II_VBLANK);
+
+	while (1) {
+		VBlankIntrWait();
+
+		for (int i = 0; i < 3 && vm.running; i++)
+			vm_step(&vm, palette);
+	}
 }
